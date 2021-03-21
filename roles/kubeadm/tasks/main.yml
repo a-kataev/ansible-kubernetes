@@ -1,0 +1,21 @@
+---
+- name: "Add repository key"
+  apt_key:
+    url: https://packages.cloud.google.com/apt/doc/apt-key.gpg
+
+- name: "Add repository"
+  apt_repository:
+    repo: deb https://apt.kubernetes.io/ kubernetes-xenial main
+    filename: kubernetes
+
+- name: "Install components"
+  apt:
+    name: "{{ item }}={{ kubernetes_version }}-*"
+    install_recommends: false
+    update_cache: true
+    force: true
+  loop:
+    - kubelet
+    - kubeadm
+    - kubectl
+  notify: restart_services

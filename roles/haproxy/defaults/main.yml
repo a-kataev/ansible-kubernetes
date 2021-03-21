@@ -1,0 +1,3 @@
+---
+haproxy_frontends: {}
+haproxy_backends: {}

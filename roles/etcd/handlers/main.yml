@@ -1,0 +1,12 @@
+---
+- name: "Restart kubelet service"
+  systemd:
+    state: restarted
+    enabled: true
+    daemon_reload: true
+    name: kubelet
+  listen: restart_kubelet
+
+- name: "Recreate etcd pod"
+  shell: crictl stopp $(crictl pods -q)
+  listen: recreate_pod

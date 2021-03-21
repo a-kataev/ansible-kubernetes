@@ -1,0 +1,44 @@
+#!/usr/sbin/nft -f
+
+flush ruleset
+
+{% for set in (nftables_define_sets | default({})).items() %}
+{% if set.1 | default([]) | list | count > 0 %}
+define {{ set.0 }} = { {{ set.1 | default([]) | list | join(', ') }} }
+{% endif %}
+{% endfor %}
+
+{% for interface in (nftables_input_interfaces | default({})).items() %}
+{% if interface.1.allowed_addresses | default([]) | list | count > 0 %}
+define input_{{ interface.0 }}_allowed_addresses = { {{ interface.1.allowed_addresses | default([]) | list | join(', ') }} }
+{% endif %}
+{% endfor %}
+
+table ip filter {
+  chain input {
+    type filter hook input priority 0; policy {% if (nftables_input_interfaces | default({})).items() | length > 0 %}{{ ((nftables_input_policy | default('accept')) == 'accept') | ternary('accept', 'drop') | string }}{% else %}accept{% endif %};
+    iif lo accept
+{% for interface in (nftables_input_interfaces | default({})).items() %}
+    iifname "{{ interface.0 | string }}" jump input_{{ interface.0 | string }}
+{% endfor %}
+  }
+{% for interface in (nftables_input_interfaces | default({})).items() %}
+  chain input_{{ interface.0 | string }} {
+{% for rule in interface.1.rules | default([]) | list %}
+    {{ rule | string }}
+{% endfor %}
+{% if interface.1.allowed_addresses | default([]) | list | count > 0 %}
+    ip saddr $input_{{ interface.0 }}_allowed_addresses accept
+{% endif %}
+    ct state related,established accept
+    ip protocol icmp accept
+    drop
+  }
+{% endfor %}
+  chain forward {
+    type filter hook forward priority 0; policy accept;
+  }
+  chain output {
+    type filter hook output priority 0; policy accept;
+  }
+}

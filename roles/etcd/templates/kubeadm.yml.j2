@@ -1,0 +1,18 @@
+---
+apiVersion: "kubeadm.k8s.io/v1beta2"
+kind: ClusterConfiguration
+etcd:
+  local:
+    serverCertSANs:
+    - "{{ etcd_advertise_client_urls | urlsplit('hostname') }}"
+    peerCertSANs:
+    - "{{ etcd_initial_advertise_peer_urls | urlsplit('hostname') }}"
+    extraArgs:
+      initial-cluster: {% set init=[] %}{% for node in etcd_initial_cluster %}{% if init.insert(loop.index, (node.name + '=' + node.url)) %}{% endif %}{% endfor %}{{ init | join(',') }}
+      initial-cluster-state: new
+      name: {{ etcd_name }}
+      listen-peer-urls: {{ etcd_listen_peer_urls }}
+      listen-client-urls: {{ etcd_listen_client_urls }}
+      advertise-client-urls: {{ etcd_advertise_client_urls }}
+      initial-advertise-peer-urls: {{ etcd_initial_advertise_peer_urls }}
+      client-cert-auth: "true"

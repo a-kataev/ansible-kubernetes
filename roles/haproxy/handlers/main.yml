@@ -1,0 +1,12 @@
+---
+- name: "Restart haproxy service"
+  systemd:
+    state: restarted
+    enabled: true
+    daemon_reload: true
+    name: haproxy
+  listen: restart_haproxy
+
+- name: "Reload haproxy service"
+  shell: haproxy -p /var/run/haproxy.pid -sf $(cat /var/run/haproxy.pid)
+  listen: reload_haproxy

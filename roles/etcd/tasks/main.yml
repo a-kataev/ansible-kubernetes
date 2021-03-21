@@ -1,0 +1,102 @@
+---
+- name: "Creates /etc/systemd/system/kubelet.service.d directory"
+  file:
+    path: /etc/systemd/system/kubelet.service.d
+    state: directory
+    mode: "0644"
+
+- name: "Create 20-crio.conf file"
+  copy:
+    src: 20-crio.conf
+    dest: /etc/systemd/system/kubelet.service.d/20-crio.conf
+    mode: "0644"
+  notify: restart_kubelet
+
+- name: "Create /etc/kubernetes/pki/etcd directory"
+  file:
+    path: /etc/kubernetes/pki/etcd
+    state: directory
+    mode: "0644"
+
+- name: "Create ca.crt file"
+  copy:
+    content: "{{ etcd_ca_crt }}"
+    dest: /etc/kubernetes/pki/etcd/ca.crt
+    mode: "0644"
+  no_log: true
+
+- name: "Create ca.key file"
+  copy:
+    content: "{{ etcd_ca_key }}"
+    dest: /etc/kubernetes/pki/etcd/ca.key
+    mode: "0644"
+  no_log: true
+
+- name: "Create kubeadm.yml file"
+  template:
+    src: kubeadm.yml.j2
+    dest: /etc/kubeadm.yml
+    mode: "0644"
+
+- name: "Generate certs for etcd-server"
+  shell: kubeadm init phase certs etcd-server --config=/etc/kubeadm.yml
+  register: kubeadm_init
+  changed_when: "' Generating ' in kubeadm_init.stdout"
+
+- name: "Generate certs for etcd-peer"
+  shell: kubeadm init phase certs etcd-peer --config=/etc/kubeadm.yml
+  register: kubeadm_init
+  changed_when: "' Generating ' in kubeadm_init.stdout"
+
+- name: "Generate certs for etcd-healthcheck-client"
+  shell: kubeadm init phase certs etcd-healthcheck-client --config=/etc/kubeadm.yml
+  register: kubeadm_init
+  changed_when: "' Generating ' in kubeadm_init.stdout"
+
+- name: "Generate certs for apiserver-etcd-client"
+  shell: kubeadm init phase certs apiserver-etcd-client --config=/etc/kubeadm.yml
+  register: kubeadm_init
+  changed_when: "' Generating ' in kubeadm_init.stdout"
+
+- name: "Create /etc/kubernetes/manifests directory"
+  file:
+    path: /etc/kubernetes/manifests
+    state: directory
+    mode: "0644"
+
+- name: "Create etcd manifest static pod"
+  shell: |-
+    (test -f /etc/kubernetes/manifests/etcd.yaml && \
+      md5sum /etc/kubernetes/manifests/etcd.yaml >/etc/kubernetes/manifests/md5sum || \
+      touch /etc/kubernetes/manifests/md5sum) && \
+    kubeadm init phase etcd local --config=/etc/kubeadm.yml >/dev/null && \
+    (md5sum --status -c /etc/kubernetes/manifests/md5sum || echo -n "RECREATE"); \
+    rm /etc/kubernetes/manifests/md5sum
+  register: kubeadm_init
+  changed_when: "'RECREATE' in kubeadm_init.stdout"
+  notify: recreate_pod
+
+- name: "Get etcd pod manifest"
+  slurp:
+    src: /etc/kubernetes/manifests/etcd.yaml
+  register: etcd_yaml
+  no_log: true
+
+- name: "Get etcd image version"
+  set_fact:
+    etcdctl_version: "{{ (etcd_yaml['content'] | b64decode | from_yaml).spec.containers[0].image.split(':')[1].split('-')[0] }}"
+
+- name: "Get current etcdctl version"
+  shell: etcdctl version | grep etcdctl | cut -d ' ' -f 3
+  changed_when: false
+  register: etcdctl_current_version
+
+- name: "Download and install binary etcdctl"
+  unarchive:
+    src: "https://github.com/etcd-io/etcd/releases/download/v{{ etcdctl_version }}/etcd-v{{ etcdctl_version }}-linux-amd64.tar.gz"
+    dest: /usr/bin
+    remote_src: true
+    extra_opts:
+      - "etcd-v{{ etcdctl_version }}-linux-amd64/etcdctl"
+      - "--strip-components=1"
+  when: etcdctl_current_version.stdout != etcdctl_version

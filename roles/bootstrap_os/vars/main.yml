@@ -1,0 +1,9 @@
+---
+packages_list:
+  - python3-apt
+  - ca-certificates
+  - curl
+  - gnupg2
+  - net-tools
+  - tree
+  - watch

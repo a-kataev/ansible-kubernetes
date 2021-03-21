@@ -1,0 +1,55 @@
+---
+- name: "Install lvm packages"
+  apt:
+    install_recommends: false
+    name: 'lvm*'
+
+- name: "Set variable"
+  set_fact:
+    lvs: >-
+      {{ '[' }}
+      {% for lv in (lvm_logical_volumes | default({})).items() %}
+        {{ '{' }}
+          "lv": "{{ lv.0 }}",
+          "size": "{{ lv.1.size | default('+100%FREE') }}",
+          "src": "/dev/mapper/{{ lvm_volume_group_name }}-{{ lv.0 }}",
+          "path": "{{ lv.1.mount }}"
+        {{ '}' }},
+      {% endfor %}
+      {{ ']' }}
+
+- name: "Create volume group"
+  lvg:
+    vg: "{{ lvm_volume_group_name }}"
+    pvs: "{{ lvm_physical_volumes | join(',') }}"
+    pvresize: true
+
+- name: "Create logical volumes"
+  lvol:
+    vg: "{{ lvm_volume_group_name }}"
+    lv: "{{ item.lv }}"
+    size: "{{ item.size }}"
+    resizefs: true
+  loop: "{{ lvs }}"
+
+- name: "Create filesystem"
+  filesystem:
+    fstype: ext4
+    dev: "{{ item.src }}"
+    resizefs: true
+  loop: "{{ lvs }}"
+
+- name: "Create mount paths"
+  file:
+    path: "{{ item.path }}"
+    state: directory
+    mode: "0755"
+  loop: "{{ lvs }}"
+
+- name: "Mount device"
+  mount:
+    src: "{{ item.src }}"
+    path: "{{ item.path }}"
+    fstype: ext4
+    state: mounted
+  loop: "{{ lvs }}"

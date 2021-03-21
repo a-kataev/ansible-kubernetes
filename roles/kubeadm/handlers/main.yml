@@ -1,0 +1,16 @@
+---
+- name: "Restart crio service"
+  systemd:
+    state: restarted
+    enabled: true
+    daemon_reload: true
+    name: crio
+  listen: restart_services
+
+- name: "Restart kubelet service"
+  systemd:
+    state: restarted
+    enabled: true
+    daemon_reload: true
+    name: kubelet
+  listen: restart_services

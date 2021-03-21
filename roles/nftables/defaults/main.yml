@@ -1,0 +1,4 @@
+---
+nftables_input_policy: accept
+nftables_input_interfaces: {}
+nftables_define_sets: {}

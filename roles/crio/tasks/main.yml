@@ -1,0 +1,72 @@
+---
+- name: "Load kernel modules"
+  modprobe:
+    name: "{{ item }}"
+  loop:
+    - overlay
+    - br_netfilter
+
+- name: "Set sysctl entries"
+  sysctl:
+    name: "{{ item }}"
+    value: "1"
+  loop:
+    - net.bridge.bridge-nf-call-iptables
+    - net.ipv4.ip_forward
+
+- name: "Add backports repository"
+  apt_repository:
+    repo: deb http://deb.debian.org/debian buster-backports main
+    filename: buster-backports
+
+- name: "Install libseccomp2"
+  apt:  # noqa package-latest
+    name: libseccomp2
+    default_release: buster-backports
+    state: latest
+    install_recommends: false
+    update_cache: true
+
+- name: "Add repositories key"
+  apt_key:
+    url: "{{ item }}"
+  loop:
+    - "https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable/Debian_10/Release.key"
+    - "https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable:/cri-o:/{{ crio_version }}/Debian_10/Release.key"
+
+- name: "Add crio repo"
+  apt_repository:
+    repo: "deb {{ item }} /"
+    filename: crio
+  loop:
+    - "https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable/Debian_10/"
+    - "https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable:/cri-o:/{{ crio_version }}/Debian_10/"
+
+- name: "Install crio"
+  apt:
+    name: "{{ item }}"
+    install_recommends: false
+    update_cache: true
+  loop:
+    - cri-o
+    - cri-o-runc
+  notify: restart_crio
+
+- name: "Create /etc/crio/crio.conf.d/02-kubernetes.conf file"
+  copy:
+    src: 02-kubernetes.conf
+    dest: /etc/crio/crio.conf.d/02-kubernetes.conf
+    mode: "0644"
+  notify: restart_crio
+
+- name: "Get current crictl version"
+  shell: crictl -v | cut -d ' ' -f 3 | cut -c2-
+  changed_when: false
+  register: crictl_current_version
+
+- name: "Download and install binary crictl"
+  unarchive:
+    src: "https://github.com/kubernetes-sigs/cri-tools/releases/download/v{{ crictl_version }}/crictl-v{{ crictl_version }}-linux-amd64.tar.gz"
+    dest: /usr/bin
+    remote_src: true
+  when: crictl_current_version.stdout != crictl_version

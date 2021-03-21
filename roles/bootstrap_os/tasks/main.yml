@@ -1,0 +1,17 @@
+---
+- name: "Install packages"
+  apt:
+    name: "{{ item }}"
+    install_recommends: false
+    update_cache: true
+  loop: "{{ packages_list | default([]) | list }}"
+
+- name: "Set hostname"
+  hostname:
+    name: "{{ inventory_hostname }}"
+
+- name: "Add hostname to /etc/hosts"
+  lineinfile:  # noqa no-tabs
+    path: /etc/hosts
+    regexp: '^127\.0\.0\.1'
+    line: "127.0.0.1	localhost {{ inventory_hostname }}"

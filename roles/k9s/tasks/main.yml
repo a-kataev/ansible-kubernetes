@@ -1,0 +1,12 @@
+---
+- name: "Get current k9s version"
+  shell: k9s version | grep Version | tr -d ' ' | cut -d ':' -f 2 | cut -c2-
+  changed_when: false
+  register: k9s_current_version
+
+- name: "Download and install binary k9s"
+  unarchive:
+    src: "https://github.com/derailed/k9s/releases/download/v{{ k9s_version }}/k9s_Linux_x86_64.tar.gz"
+    dest: /usr/local/bin
+    remote_src: true
+  when: k9s_current_version.stdout != k9s_version

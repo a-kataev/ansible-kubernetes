@@ -1,0 +1,14 @@
+---
+- name: "Install haproxy package"
+  apt:
+    name: haproxy
+    install_recommends: false
+  notify: restart_haproxy
+
+- name: "Create haproxy.cfg file"
+  template:
+    src: haproxy.cfg.j2
+    dest: /etc/haproxy/haproxy.cfg
+    mode: "0644"
+    validate: "/usr/sbin/haproxy -c -V -f %s"
+  notify: reload_haproxy

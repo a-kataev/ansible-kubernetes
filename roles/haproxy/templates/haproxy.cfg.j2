@@ -1,0 +1,36 @@
+global
+  log /dev/log local0
+  log /dev/log local1 notice
+  user haproxy
+  group haproxy
+  daemon
+
+listen stats
+  bind :8080
+  mode http
+  stats enable
+  stats uri /
+
+{% for frontend in (haproxy_frontends | default({})).items() %}
+frontend {{ frontend.0 }}
+{% for param in (frontend.1 | default({})).items() %}
+  {{ param.0 }} {{ param.1 }}
+{% endfor %}
+
+{% endfor %}
+
+{% for backend in (haproxy_backends | default({})).items() %}
+backend {{ backend.0 }}
+{% for param in (backend.1 | default({})).items() %}
+{% if param.0 != 'server' %}
+{% if param.0 == 'servers' %}
+{% for server in param.1 | default([]) %}
+  server {{ server }}
+{% endfor %}
+{% else %}
+  {{ param.0 }} {{ param.1 }}
+{% endif %}
+{% endif %}
+{% endfor %}
+
+{% endfor %}

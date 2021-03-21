@@ -1,0 +1,79 @@
+---
+all:
+  children:
+    etcd_nodes:
+      hosts:
+        k8s-etcd-1:
+        k8s-etcd-2:
+        k8s-etcd-3:
+      vars:
+        nftables_define_sets:
+          etcd_cluster: "{% set hosts=[] %}{% for host in groups['etcd_nodes'] | map('extract', hostvars) %}{% if hosts.insert(loop.index, (host.ansible_facts['ens160'].ipv4.address)) %}{% endif %}{% endfor %}{{ hosts }}"
+          master_nodes: "{% set hosts=[] %}{% for host in groups['master_nodes'] | map('extract', hostvars) %}{% if hosts.insert(loop.index, (host.ansible_facts['ens160'].ipv4.address)) %}{% endif %}{% endfor %}{{ hosts }}"
+        nftables_input_interfaces:
+          ens160:
+            rules:
+              - 'tcp dport 22 ip saddr {{ nftables_ssh_allowed_addresses }} accept comment "ssh"'
+              - 'tcp dport { 2379, 2380 } ip saddr $etcd_cluster accept comment "etcd members"'
+              - 'tcp dport 2379 ip saddr $master_nodes accept comment "etcd clients"'
+        etcd_name: "{{ inventory_hostname }}"
+        etcd_advertise_client_urls: "https://{{ ansible_facts['ens160'].ipv4.address }}:2379"
+        etcd_initial_advertise_peer_urls: "https://{{ ansible_facts['ens160'].ipv4.address }}:2380"
+        etcd_initial_cluster: >-
+          {{ '[' }}
+          {% for node in groups['etcd_nodes'] | map('extract', hostvars) %}
+            {{ '{' }}
+              "name": "{{ node.etcd_name }}",
+              "url": "{{ node.etcd_initial_advertise_peer_urls }}"
+            {{ '}' }},
+          {% endfor %}
+          {{ ']' }}
+        etcd_ca_crt: "{{ hostvars['localhost'].etcd_ca_crt }}"
+        etcd_ca_key: "{{ hostvars['localhost'].etcd_ca_key }}"
+    master_nodes:
+      hosts:
+        k8s-master-1:
+        k8s-master-2:
+      vars:
+        nftables_input_interfaces:
+          ens160:
+            allowed_addresses: "{% set hosts=[] %}{% for host in groups['master_nodes'] | map('extract', hostvars) + groups['worker_nodes'] | map('extract', hostvars) %}{% if hosts.insert(loop.index, (host.ansible_facts['ens160'].ipv4.address)) %}{% endif %}{% endfor %}{{ hosts }}"
+            rules:
+              - 'tcp dport 22 ip saddr {{ nftables_ssh_allowed_addresses }} accept comment "ssh"'
+              - "tcp dport 6443 ip saddr {{ hostvars[groups['balancer_nodes'][0]].ansible_facts['ens160'].ipv4.address }} accept comment \"balancer\""
+        kubeadm_cluster_name: k8s-play
+        # kubeadm_networking_dns_domain:
+    worker_nodes:
+      hosts:
+        k8s-worker-1:
+      vars:
+        nftables_input_interfaces:
+          ens160:
+            allowed_addresses: "{% set hosts=[] %}{% for host in groups['master_nodes'] | map('extract', hostvars) + groups['worker_nodes'] | map('extract', hostvars) %}{% if hosts.insert(loop.index, (host.ansible_facts['ens160'].ipv4.address)) %}{% endif %}{% endfor %}{{ hosts }}"
+            rules:
+              - 'tcp dport 22 ip saddr {{ nftables_ssh_allowed_addresses }} accept comment "ssh"'
+    balancer_nodes:
+      hosts:
+        k8s-balancer-1:
+      vars:
+        nftables_input_interfaces:
+          ens160:
+            rules:
+              - 'tcp dport 22 ip saddr {{ nftables_ssh_allowed_addresses }} accept comment "ssh"'
+              - 'tcp dport 8080 accept comment "haproxy stats"'
+              - 'tcp dport 6443 accept comment "k8s-api"'
+        haproxy_frontends:
+          k8s-api:
+            bind: :6443
+            mode: tcp
+            option: tcplog
+            default_backend: k8s-api
+        haproxy_backends:
+          k8s-api:
+            mode: tcp
+            option: tcp-check
+            balance: roundrobin
+            servers: "{% set servers=[] %}{% for host in groups['master_nodes'] | map('extract', hostvars) %}{% if servers.insert(loop.index, (host.inventory_hostname + ' ' + host.ansible_facts['ens160'].ipv4.address + ':6443 check fall 3 rise 2')) %}{% endif %}{% endfor %}{{ servers }}"
+  vars:
+    interpreter_python: /usr/bin/python3
+    nftables_ssh_allowed_addresses: 10.0.0.0/24

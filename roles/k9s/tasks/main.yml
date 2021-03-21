@@ -1,6 +1,6 @@
 ---
 - name: "Get current k9s version"  # noqa risky-shell-pipe
-  shell: k9s version | grep Version | tr -d ' ' | cut -d ':' -f 2 | cut -c2-
+  shell: k9s version | grep ersion | sed 's/.*v//'
   changed_when: false
   register: k9s_current_version
 

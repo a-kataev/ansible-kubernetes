@@ -109,8 +109,7 @@
       changed_when: false
 
     - name: "Get certificate_key"  # noqa risky-shell-pipe
-      shell: >-
-        grep certificateKey /etc/kubeadm.yml | sed 's/certificateKey: //'
+      shell: grep certificateKey /etc/kubeadm.yml | sed 's/.* //'
       register: certificate_key
       changed_when: false
 

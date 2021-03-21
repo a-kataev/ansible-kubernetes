@@ -1,0 +1,178 @@
+---
+- hosts: [master_nodes, balancer_nodes, etcd_nodes, worker_nodes]
+  tasks:
+    - name: "Gather network facts"
+      setup:
+        gather_subset:
+          - "!all"
+          - "!any"
+          - network
+
+- hosts: [master_nodes]
+  roles:
+    - bootstrap_os
+    - nftables
+    - crio
+    - kubeadm
+
+- hosts: master_nodes[0]
+  tasks:
+    - name: "Exists /etc/kubernetes/pki/ca.crt file"
+      stat:
+        path: /etc/kubernetes/pki/ca.crt
+      register: ca_crt
+
+    - block:
+        - name: "Get /etc/kubernetes/pki/ca.crt file"
+          slurp:
+            src: /etc/kubernetes/pki/etcd/ca.crt
+          register: etcd_ca_crt
+
+        - name: "Get /etc/kubernetes/pki/apiserver-etcd-client.crt file"
+          slurp:
+            src: /etc/kubernetes/pki/apiserver-etcd-client.crt
+          register: apiserver_etcd_client_crt
+
+        - name: "Get /etc/kubernetes/pki/apiserver-etcd-client.key file"
+          slurp:
+            src: /etc/kubernetes/pki/apiserver-etcd-client.key
+          register: apiserver_etcd_client_key
+      when: not ca_crt.stat.exists
+      delegate_to: "{{ groups['etcd_nodes'][0] }}"
+
+    - block:
+        - name: "Create /etc/kubernetes/pki/etcd directory"
+          file:
+            path: /etc/kubernetes/pki/etcd
+            state: directory
+            mode: "0644"
+
+        - name: "Create /etc/kubernetes/pki/etcd/ca.crt file"
+          copy:
+            content: "{{ etcd_ca_crt['content'] | b64decode }}"
+            dest: /etc/kubernetes/pki/etcd/ca.crt
+            mode: "0644"
+
+        - name: "Create /etc/kubernetes/pki/apiserver-etcd-client.crt file"
+          copy:
+            content: "{{ apiserver_etcd_client_crt['content'] | b64decode }}"
+            dest: /etc/kubernetes/pki/apiserver-etcd-client.crt
+            mode: "0644"
+
+        - name: "Create /etc/kubernetes/pki/apiserver-etcd-client.key file"
+          copy:
+            content: "{{ apiserver_etcd_client_key['content'] | b64decode }}"
+            dest: /etc/kubernetes/pki/apiserver-etcd-client.key
+            mode: "0644"
+
+        - name: "Generate certificate key"
+          shell: >-
+            kubeadm certs certificate-key
+          register: certificate_key
+
+        - name: "Create /etc/kubeadm.yml file"
+          copy:
+            content: |
+              ---
+              apiVersion: "kubeadm.k8s.io/v1beta2"
+              kind: ClusterConfiguration
+              controlPlaneEndpoint: "{{ groups['balancer_nodes'][0] }}:6443"
+              etcd:
+                external:
+                  endpoints:
+              {% for node in groups['etcd_nodes'] | map('extract', hostvars) %}
+                    - {{ node.etcd_advertise_client_urls }}
+              {% endfor %}
+                  caFile: /etc/kubernetes/pki/etcd/ca.crt
+                  certFile: /etc/kubernetes/pki/apiserver-etcd-client.crt
+                  keyFile: /etc/kubernetes/pki/apiserver-etcd-client.key
+              clusterName: {{ kubeadm_cluster_name | default('kubernetes') }}
+              networking:
+                dnsDomain: {{ kubeadm_networking_dns_domain | default('cluster.local') }}
+              ---
+              apiVersion: "kubeadm.k8s.io/v1beta2"
+              kind: InitConfiguration
+              certificateKey: {{ certificate_key.stdout }}
+            dest: /etc/kubeadm.yml
+            mode: "0644"
+
+        - name: "Bootstrap cluster"
+          shell: >-
+            kubeadm init \
+              --config /etc/kubeadm.yml \
+              --upload-certs \
+              --cri-socket=unix:///var/run/crio/crio.sock
+      when: not ca_crt.stat.exists
+
+    - name: "Get kubeadm join command"
+      shell: >-
+        kubeadm token create --print-join-command
+      register: kubeadm_join
+      changed_when: false
+
+    - name: "Get certificate_key"
+      shell: >-
+        grep certificateKey /etc/kubeadm.yml | sed 's/certificateKey: //'
+      register: certificate_key
+      changed_when: false
+
+    - name: "Set kubeadm join vars"
+      set_fact:
+        kubeadm_join_master: "{{ kubeadm_join.stdout_lines[0] + '--control-plane --certificate-key ' + certificate_key.stdout }}"
+        kubeadm_join_worker: "{{ kubeadm_join.stdout_lines[0] }}"
+  roles:
+    - k9s
+  post_tasks:
+    - name: "Create .kube directory"
+      file:
+        path: "{{ ansible_facts.user_dir }}/.kube"
+        state: directory
+        mode: "0644"
+
+    - name: "Copy kube config"
+      copy:
+        src: /etc/kubernetes/admin.conf
+        remote_src: true
+        dest: "{{ ansible_facts.user_dir }}/.kube/config"
+
+- hosts: "{{ groups['master_nodes'][1:] }}"
+  tasks:
+    - name: "Exists /etc/kubernetes/pki/ca.crt file"
+      stat:
+        path: /etc/kubernetes/pki/ca.crt
+      register: ca_crt
+
+    - name: "Join master node to cluster"
+      shell: >-
+        {{ hostvars[groups['master_nodes'][0]].kubeadm_join_master }}
+      register: kubeadm_join
+      changed_when: "'This node has joined the cluster' in kubeadm_join.stdout"
+      when: not ca_crt.stat.exists
+
+- hosts: [worker_nodes]
+  roles:
+    - bootstrap_os
+    - nftables
+    - crio
+    - kubeadm
+  post_tasks:
+    - name: "Exists /etc/kubernetes/pki/ca.crt file"
+      stat:
+        path: /etc/kubernetes/pki/ca.crt
+      register: ca_crt
+
+    - block:
+        - name: "Join worker node to cluster"
+          shell: >-
+            {{ hostvars[groups['master_nodes'][0]].kubeadm_join_worker }}
+          register: kubeadm_join
+          changed_when: "'This node has joined the cluster' in kubeadm_join.stdout"
+
+        - name: "Mark none as worker"
+          shell: >-
+            KUBECONFIG=/etc/kubernetes/admin.conf
+            kubectl label node {{ inventory_hostname }} node-role.kubernetes.io/worker= --overwrite
+          register: kubectl_label
+          changed_when: "'not labeled' not in kubectl_label.stdout"
+          delegate_to: "{{ groups['master_nodes'][0] }}"
+      when: not ca_crt.stat.exists

@@ -1,0 +1,75 @@
+---
+- hosts: [etcd_nodes, master_nodes]
+  tasks:
+    - name: "Gather network facts"
+      setup:
+        gather_subset:
+          - "!all"
+          - "!any"
+          - network
+
+- hosts: [etcd_nodes]
+  roles:
+    - bootstrap_os
+    - nftables
+    - crio
+    - kubeadm
+
+- hosts: etcd_nodes
+  pre_tasks:
+    - block:
+        - name: "Exists /etc/kubernetes/pki/ca.crt file"
+          stat:
+            path: /etc/kubernetes/pki/ca.crt
+          register: ca_crt
+
+        - name: "Generate ca cert"
+          shell: >-
+            kubeadm init phase certs etcd-ca
+          register: kubeadm_init
+          changed_when: "' Generating ' in kubeadm_init.stdout"
+          when: not ca_crt.stat.exists
+
+        - name: "Get /etc/kubernetes/pki/etcd/ca.crt file"
+          slurp:
+            src: /etc/kubernetes/pki/etcd/ca.crt
+          register: etcd_ca_crt
+
+        - name: "Get /etc/kubernetes/pki/etcd/ca.key file"
+          slurp:
+            src: /etc/kubernetes/pki/etcd/ca.key
+          register: etcd_ca_key
+
+        - name: "Set etcd_ca_crt and etcd_ca_key"
+          set_fact:
+            etcd_ca_crt: "{{ etcd_ca_crt['content'] | b64decode }}"
+            etcd_ca_key: "{{ etcd_ca_key['content'] | b64decode }}"
+      delegate_to: "{{ groups['etcd_nodes'][0] }}"
+      run_once: true
+  roles:
+    - etcd
+  post_tasks:
+    - name: "Check health etcd cluster"
+      shell: >-
+        etcdctl \
+          endpoint health --cluster \
+          --cacert /etc/kubernetes/pki/etcd/ca.crt \
+          --cert /etc/kubernetes/pki/etcd/server.crt \
+          --key /etc/kubernetes/pki/etcd/server.key \
+          --endpoints {{ etcd_advertise_client_urls }} \
+          -w json 2>/dev/null
+      retries: 9
+      delay: 10
+      register: etcdctl_command
+      changed_when: false
+      until: etcdctl_command.rc == 0
+
+    - name: "Check count nodes"
+      fail:
+        msg: "Mismatch cluster nodes"
+      when: (etcdctl_command.stdout | from_json | count) != (groups['etcd_nodes'] | count)
+
+    - name: "Check health nodes"
+      fail:
+        msg: "Unhealth cluster nodes"
+      when: etcdctl_command.stdout | from_json | map(attribute='health') | unique | count > 1

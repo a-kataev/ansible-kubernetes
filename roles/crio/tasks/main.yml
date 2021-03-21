@@ -59,7 +59,7 @@
     mode: "0644"
   notify: restart_crio
 
-- name: "Get current crictl version"
+- name: "Get current crictl version"  # noqa risky-shell-pipe
   shell: crictl -v | cut -d ' ' -f 3 | cut -c2-
   changed_when: false
   register: crictl_current_version

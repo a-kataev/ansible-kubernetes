@@ -86,7 +86,7 @@
   set_fact:
     etcdctl_version: "{{ (etcd_yaml['content'] | b64decode | from_yaml).spec.containers[0].image.split(':')[1].split('-')[0] }}"
 
-- name: "Get current etcdctl version"
+- name: "Get current etcdctl version"  # noqa risky-shell-pipe
   shell: etcdctl version | grep etcdctl | cut -d ' ' -f 3
   changed_when: false
   register: etcdctl_current_version

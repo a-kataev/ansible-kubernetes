@@ -24,8 +24,7 @@
           register: ca_crt
 
         - name: "Generate ca cert"
-          shell: >-
-            kubeadm init phase certs etcd-ca
+          shell: kubeadm init phase certs etcd-ca
           register: kubeadm_init
           changed_when: "' Generating ' in kubeadm_init.stdout"
           when: not ca_crt.stat.exists
@@ -50,7 +49,7 @@
     - etcd
   post_tasks:
     - name: "Check health etcd cluster"
-      shell: >-
+      shell: |-
         etcdctl \
           endpoint health --cluster \
           --cacert /etc/kubernetes/pki/etcd/ca.crt \

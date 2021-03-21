@@ -66,8 +66,7 @@
             mode: "0644"
 
         - name: "Generate certificate key"
-          shell: >-
-            kubeadm certs certificate-key
+          shell: kubeadm certs certificate-key
           register: certificate_key
 
         - name: "Create /etc/kubeadm.yml file"
@@ -97,7 +96,7 @@
             mode: "0644"
 
         - name: "Bootstrap cluster"
-          shell: >-
+          shell: |-
             kubeadm init \
               --config /etc/kubeadm.yml \
               --upload-certs \
@@ -105,12 +104,11 @@
       when: not ca_crt.stat.exists
 
     - name: "Get kubeadm join command"
-      shell: >-
-        kubeadm token create --print-join-command
+      shell: kubeadm token create --print-join-command
       register: kubeadm_join
       changed_when: false
 
-    - name: "Get certificate_key"
+    - name: "Get certificate_key"  # noqa risky-shell-pipe
       shell: >-
         grep certificateKey /etc/kubeadm.yml | sed 's/certificateKey: //'
       register: certificate_key
@@ -134,6 +132,7 @@
         src: /etc/kubernetes/admin.conf
         remote_src: true
         dest: "{{ ansible_facts.user_dir }}/.kube/config"
+        mode: "0644"
 
 - hosts: "{{ groups['master_nodes'][1:] }}"
   tasks:
@@ -143,8 +142,7 @@
       register: ca_crt
 
     - name: "Join master node to cluster"
-      shell: >-
-        {{ hostvars[groups['master_nodes'][0]].kubeadm_join_master }}
+      shell: "{{ hostvars[groups['master_nodes'][0]].kubeadm_join_master }}"
       register: kubeadm_join
       changed_when: "'This node has joined the cluster' in kubeadm_join.stdout"
       when: not ca_crt.stat.exists
@@ -163,15 +161,15 @@
 
     - block:
         - name: "Join worker node to cluster"
-          shell: >-
-            {{ hostvars[groups['master_nodes'][0]].kubeadm_join_worker }}
+          shell: "{{ hostvars[groups['master_nodes'][0]].kubeadm_join_worker }}"
           register: kubeadm_join
           changed_when: "'This node has joined the cluster' in kubeadm_join.stdout"
 
         - name: "Mark none as worker"
           shell: >-
-            KUBECONFIG=/etc/kubernetes/admin.conf
             kubectl label node {{ inventory_hostname }} node-role.kubernetes.io/worker= --overwrite
+          environment:
+            KUBECONFIG: /etc/kubernetes/admin.conf
           register: kubectl_label
           changed_when: "'not labeled' not in kubectl_label.stdout"
           delegate_to: "{{ groups['master_nodes'][0] }}"

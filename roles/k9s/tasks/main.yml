@@ -1,5 +1,5 @@
 ---
-- name: "Get current k9s version"
+- name: "Get current k9s version"  # noqa risky-shell-pipe
   shell: k9s version | grep Version | tr -d ' ' | cut -d ':' -f 2 | cut -c2-
   changed_when: false
   register: k9s_current_version

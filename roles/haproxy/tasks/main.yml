@@ -1,9 +1,28 @@
 ---
+- name: "Add backports repository"
+  apt_repository:
+    repo: deb http://deb.debian.org/debian buster-backports main
+    filename: buster-backports
+
 - name: "Install haproxy package"
-  apt:
+  apt:  # noqa package-latest
     name: haproxy
+    default_release: buster-backports
+    state: latest
     install_recommends: false
+    update_cache: true
   notify: restart_haproxy
+
+- name: "Install socat package"
+  apt:
+    name: socat
+    install_recommends: false
+
+- name: "Set EXTRAOPTS for service"
+  lineinfile:
+    path: /etc/default/haproxy
+    regexp: '^.*EXTRAOPTS='
+    line: 'EXTRAOPTS="-S /run/haproxy-master.sock,uid,106,gid,112,mode,600"'
 
 - name: "Create haproxy.cfg file"
   template:

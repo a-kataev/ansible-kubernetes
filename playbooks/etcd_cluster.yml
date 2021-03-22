@@ -56,9 +56,9 @@
           --cert /etc/kubernetes/pki/etcd/server.crt \
           --key /etc/kubernetes/pki/etcd/server.key \
           --endpoints {{ etcd_advertise_client_urls }} \
-          -w json 2>/dev/null
-      retries: 9
-      delay: 10
+          -w json
+      retries: 8
+      delay: 15
       register: etcdctl_command
       changed_when: false
       until: etcdctl_command.rc == 0

@@ -8,8 +8,20 @@ all:
         k8s-etcd-3:
       vars:
         nftables_define_sets:
-          etcd_cluster: "{% set hosts=[] %}{% for host in groups['etcd_nodes'] | map('extract', hostvars) %}{% if hosts.insert(loop.index, (host.ansible_facts['ens160'].ipv4.address)) %}{% endif %}{% endfor %}{{ hosts }}"
-          master_nodes: "{% set hosts=[] %}{% for host in groups['master_nodes'] | map('extract', hostvars) %}{% if hosts.insert(loop.index, (host.ansible_facts['ens160'].ipv4.address)) %}{% endif %}{% endfor %}{{ hosts }}"
+          etcd_cluster: >-
+            {% set l=[] -%}
+            {% for h in groups['etcd_nodes'] | map('extract', hostvars) -%}
+            {% if l.insert(loop.index, h.ansible_facts['ens160'].ipv4.address) -%}
+            {% endif -%}
+            {% endfor -%}
+            {{ l }}
+          master_nodes: >-
+            {% set l=[] -%}
+            {% for h in groups['master_nodes'] | map('extract', hostvars) -%}
+            {% if l.insert(loop.index, h.ansible_facts['ens160'].ipv4.address) -%}
+            {% endif -%}
+            {% endfor -%}
+            {{ l }}
         nftables_input_interfaces:
           ens160:
             rules:
@@ -20,14 +32,12 @@ all:
         etcd_advertise_client_urls: "https://{{ ansible_facts['ens160'].ipv4.address }}:2379"
         etcd_initial_advertise_peer_urls: "https://{{ ansible_facts['ens160'].ipv4.address }}:2380"
         etcd_initial_cluster: >-
-          {{ '[' }}
-          {% for node in groups['etcd_nodes'] | map('extract', hostvars) %}
-            {{ '{' }}
-              "name": "{{ node.etcd_name }}",
-              "url": "{{ node.etcd_initial_advertise_peer_urls }}"
-            {{ '}' }},
-          {% endfor %}
-          {{ ']' }}
+          {% set l=[] -%}
+          {% for h in groups['etcd_nodes'] | map('extract', hostvars) -%}
+          {% if l.insert(loop.index, dict(name=h.etcd_name,url=h.ansible_facts['ens160'].ipv4.address)) -%}
+          {% endif -%}
+          {% endfor -%}
+          {{ l }}
         etcd_ca_crt: "{{ hostvars['localhost'].etcd_ca_crt }}"
         etcd_ca_key: "{{ hostvars['localhost'].etcd_ca_key }}"
     master_nodes:
@@ -37,7 +47,13 @@ all:
       vars:
         nftables_input_interfaces:
           ens160:
-            allowed_addresses: "{% set hosts=[] %}{% for host in groups['master_nodes'] | map('extract', hostvars) + groups['worker_nodes'] | map('extract', hostvars) %}{% if hosts.insert(loop.index, (host.ansible_facts['ens160'].ipv4.address)) %}{% endif %}{% endfor %}{{ hosts }}"
+            allowed_addresses: >-
+              {% set l=[] -%}
+              {% for h in groups['master_nodes'] | map('extract', hostvars) + groups['worker_nodes'] | map('extract', hostvars) -%}
+              {% if l.insert(loop.index, h.ansible_facts['ens160'].ipv4.address) -%}
+              {% endif -%}
+              {% endfor -%}
+              {{ l }}
             rules:
               - 'tcp dport 22 ip saddr {{ nftables_ssh_allowed_addresses }} accept comment "ssh"'
               - "tcp dport 6443 ip saddr {{ hostvars[groups['balancer_nodes'][0]].ansible_facts['ens160'].ipv4.address }} accept comment \"balancer\""
@@ -49,7 +65,13 @@ all:
       vars:
         nftables_input_interfaces:
           ens160:
-            allowed_addresses: "{% set hosts=[] %}{% for host in groups['master_nodes'] | map('extract', hostvars) + groups['worker_nodes'] | map('extract', hostvars) %}{% if hosts.insert(loop.index, (host.ansible_facts['ens160'].ipv4.address)) %}{% endif %}{% endfor %}{{ hosts }}"
+            allowed_addresses: >-
+              {% set l=[] -%}
+              {% for h in groups['master_nodes'] | map('extract', hostvars) + groups['worker_nodes'] | map('extract', hostvars) -%}
+              {% if l.insert(loop.index, h.ansible_facts['ens160'].ipv4.address) -%}
+              {% endif -%}
+              {% endfor -%}
+              {{ l }}
             rules:
               - 'tcp dport 22 ip saddr {{ nftables_ssh_allowed_addresses }} accept comment "ssh"'
     balancer_nodes:
@@ -73,7 +95,13 @@ all:
             mode: tcp
             option: tcp-check
             balance: roundrobin
-            servers: "{% set servers=[] %}{% for host in groups['master_nodes'] | map('extract', hostvars) %}{% if servers.insert(loop.index, (host.inventory_hostname + ' ' + host.ansible_facts['ens160'].ipv4.address + ':6443 check fall 3 rise 2')) %}{% endif %}{% endfor %}{{ servers }}"
+            servers: >-
+              {% set l=[] -%}
+              {% for h in groups['master_nodes'] | map('extract', hostvars) -%}
+              {% if l.insert(loop.index, (h.inventory_hostname + ' ' + h.ansible_facts['ens160'].ipv4.address + ':6443 check fall 3 rise 2')) -%}
+              {% endif -%}
+              {% endfor -%}
+              {{ l }}
   vars:
     interpreter_python: /usr/bin/python3
     nftables_ssh_allowed_addresses: 10.0.0.0/24

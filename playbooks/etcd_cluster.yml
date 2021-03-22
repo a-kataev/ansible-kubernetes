@@ -15,7 +15,7 @@
     - crio
     - kubeadm
 
-- hosts: etcd_nodes
+- hosts: [etcd_nodes]
   pre_tasks:
     - block:
         - name: "Exists /etc/kubernetes/pki/ca.crt file"

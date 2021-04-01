@@ -9,6 +9,7 @@
     - kubeadm
 
 - hosts: [etcd_nodes]
+  gather_fact: false
   pre_tasks:
     - block:
         - name: "Exists /etc/kubernetes/pki/ca.crt file"

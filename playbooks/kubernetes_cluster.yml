@@ -1,5 +1,5 @@
 ---
-- hosts: [balancer_nodes, etcd_nodes]
+- hosts: [balancer_nodes, etcd_nodes, worker_nodes]
 
 - hosts: [master_nodes]
   roles:
@@ -9,6 +9,7 @@
     - kubeadm
 
 - hosts: master_nodes[0]
+  gather_facts: false
   tasks:
     - name: "Exists /etc/kubernetes/pki/ca.crt file"
       stat:
@@ -132,6 +133,7 @@
         mode: "0644"
 
 - hosts: "{{ groups['master_nodes'][1:] }}"
+  gather_facts: false
   tasks:
     - name: "Create /etc/kubeadm.yml file"
       copy:
@@ -151,6 +153,7 @@
       when: not ca_crt.stat.exists
 
 - hosts: [worker_nodes]
+  gather_facts: false
   roles:
     - bootstrap_os
     - nftables

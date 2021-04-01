@@ -104,4 +104,4 @@ all:
               {{ l }}
   vars:
     interpreter_python: /usr/bin/python3
-    nftables_ssh_allowed_addresses: 10.0.0.0/24
+    nftables_ssh_allowed_addresses: 10.0.0.0/8

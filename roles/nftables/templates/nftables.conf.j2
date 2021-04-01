@@ -5,15 +5,15 @@ flush ruleset
 {% for set in (nftables_define_sets | default({})).items() %}
 {% if set.1 | default([]) | list | count > 0 %}
 define {{ set.0 }} = { {{ set.1 | default([]) | list | join(', ') }} }
+
 {% endif %}
 {% endfor %}
-
 {% for interface in (nftables_input_interfaces | default({})).items() %}
 {% if interface.1.allowed_addresses | default([]) | list | count > 0 %}
 define input_{{ interface.0 }}_allowed_addresses = { {{ interface.1.allowed_addresses | default([]) | list | join(', ') }} }
+
 {% endif %}
 {% endfor %}
-
 table ip filter {
   chain input {
     type filter hook input priority 0; policy {% if (nftables_input_interfaces | default({})).items() | length > 0 %}{{ ((nftables_input_policy | default('accept')) == 'accept') | ternary('accept', 'drop') | string }}{% else %}accept{% endif %};

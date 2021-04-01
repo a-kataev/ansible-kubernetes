@@ -10,16 +10,15 @@ listen stats
   mode http
   stats enable
   stats uri /
-
 {% for frontend in (haproxy_frontends | default({})).items() %}
+
 frontend {{ frontend.0 }}
 {% for param in (frontend.1 | default({})).items() %}
   {{ param.0 }} {{ param.1 }}
 {% endfor %}
-
 {% endfor %}
-
 {% for backend in (haproxy_backends | default({})).items() %}
+
 backend {{ backend.0 }}
 {% for param in (backend.1 | default({})).items() %}
 {% if param.0 != 'server' %}
@@ -32,5 +31,4 @@ backend {{ backend.0 }}
 {% endif %}
 {% endif %}
 {% endfor %}
-
 {% endfor %}

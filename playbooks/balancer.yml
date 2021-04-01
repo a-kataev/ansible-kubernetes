@@ -1,16 +1,7 @@
 ---
-- hosts: [balancer_nodes, master_nodes]
-  become: true
-  tasks:
-    - name: "Gather facts"
-      setup:
-        gather_subset:
-          - "!all"
-          - "!any"
-          - network
+- hosts: [master_nodes]
 
 - hosts: [balancer_nodes]
-  become: true
   roles:
     - bootstrap_os
     - nftables

@@ -1,12 +1,5 @@
 ---
-- hosts: [etcd_nodes, master_nodes]
-  tasks:
-    - name: "Gather network facts"
-      setup:
-        gather_subset:
-          - "!all"
-          - "!any"
-          - network
+- hosts: [master_nodes]
 
 - hosts: [etcd_nodes]
   roles:

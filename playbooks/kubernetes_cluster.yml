@@ -1,12 +1,5 @@
 ---
-- hosts: [master_nodes, balancer_nodes, etcd_nodes, worker_nodes]
-  tasks:
-    - name: "Gather network facts"
-      setup:
-        gather_subset:
-          - "!all"
-          - "!any"
-          - network
+- hosts: [balancer_nodes, etcd_nodes]
 
 - hosts: [master_nodes]
   roles:
